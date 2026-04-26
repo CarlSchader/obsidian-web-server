@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Obsidian Web Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="sidebar-header">
+          <span class="title">Vault</span>
+          <button id="btn-new" title="Create a new file">+ New</button>
+          <button id="btn-refresh" title="Refresh tree">&#x21bb;</button>
+        </div>
+        <div id="tree" class="tree"></div>
+      </aside>
+      <main id="editor-pane">
+        <header class="editor-header">
+          <input id="path-display" type="text" readonly placeholder="No file selected" />
+          <input id="commit-message" type="text" placeholder="Commit message (optional)" />
+          <button id="btn-save" disabled>Save (Ctrl+S)</button>
+          <button id="btn-rename" disabled>Rename</button>
+          <button id="btn-delete" disabled>Delete</button>
+        </header>
+        <textarea
+          id="editor"
+          spellcheck="false"
+          placeholder="Select a file from the tree to start editing."
+          disabled
+        ></textarea>
+        <footer id="status">Ready.</footer>
+      </main>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
