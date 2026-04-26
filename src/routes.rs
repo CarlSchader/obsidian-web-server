@@ -102,6 +102,12 @@ struct RenameFileBody {
 struct CommitResponse {
     committed: bool,
     sha: Option<String>,
+    /// `None` in local-only mode, `Some(true)` if push succeeded, `Some(false)` if it failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pushed: Option<bool>,
+    /// Stderr from `git push` when `pushed == Some(false)`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    push_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -140,6 +146,8 @@ async fn api_put_file(
     State(state): State<AppState>,
     Json(body): Json<PutFileBody>,
 ) -> Result<Json<CommitResponse>, ApiError> {
+    let _guard = state.write_lock.lock().await;
+
     let abs = state.vault.resolve(&body.path)?;
     if let Some(parent) = abs.parent() {
         tokio::fs::create_dir_all(parent)
@@ -169,6 +177,8 @@ async fn api_create_file(
     State(state): State<AppState>,
     Json(body): Json<CreateFileBody>,
 ) -> Result<Json<CommitResponse>, ApiError> {
+    let _guard = state.write_lock.lock().await;
+
     let abs = state.vault.resolve(&body.path)?;
     if abs.exists() {
         return Err(ApiError::Conflict(format!(
@@ -204,6 +214,8 @@ async fn api_delete_file(
     State(state): State<AppState>,
     Json(body): Json<DeleteFileBody>,
 ) -> Result<Json<CommitResponse>, ApiError> {
+    let _guard = state.write_lock.lock().await;
+
     let abs = state.vault.resolve(&body.path)?;
     if !abs.exists() {
         return Err(ApiError::NotFound(body.path.clone()));
@@ -213,10 +225,12 @@ async fn api_delete_file(
         .relative_str(&abs)
         .ok_or_else(|| ApiError::Internal("could not derive relative path".into()))?;
 
+    let ssh_ref = state.ssh.as_deref();
     let repo = GitRepo {
         root: state.vault.root(),
         user_name: &state.git_user_name,
         user_email: &state.git_user_email,
+        ssh: ssh_ref,
     };
 
     let message = body
@@ -227,13 +241,16 @@ async fn api_delete_file(
         .unwrap_or_else(|| format!("delete: {rel}"));
 
     let result = repo.rm_and_commit(&rel, &message).await?;
-    Ok(Json(commit_response(result)))
+    let response = build_commit_response(&repo, result).await;
+    Ok(Json(response))
 }
 
 async fn api_rename_file(
     State(state): State<AppState>,
     Json(body): Json<RenameFileBody>,
 ) -> Result<Json<CommitResponse>, ApiError> {
+    let _guard = state.write_lock.lock().await;
+
     let abs_from = state.vault.resolve(&body.from)?;
     let abs_to = state.vault.resolve(&body.to)?;
     if !abs_from.exists() {
@@ -260,10 +277,12 @@ async fn api_rename_file(
         .relative_str(&abs_to)
         .ok_or_else(|| ApiError::Internal("could not derive relative path".into()))?;
 
+    let ssh_ref = state.ssh.as_deref();
     let repo = GitRepo {
         root: state.vault.root(),
         user_name: &state.git_user_name,
         user_email: &state.git_user_email,
+        ssh: ssh_ref,
     };
 
     let message = body
@@ -274,7 +293,8 @@ async fn api_rename_file(
         .unwrap_or_else(|| format!("rename: {rel_from} -> {rel_to}"));
 
     let result = repo.mv_and_commit(&rel_from, &rel_to, &message).await?;
-    Ok(Json(commit_response(result)))
+    let response = build_commit_response(&repo, result).await;
+    Ok(Json(response))
 }
 
 // ---------- Helpers ----------
@@ -284,24 +304,48 @@ async fn commit(
     rel_paths: &[&str],
     message: &str,
 ) -> Result<Json<CommitResponse>, ApiError> {
+    let ssh_ref = state.ssh.as_deref();
     let repo = GitRepo {
         root: state.vault.root(),
         user_name: &state.git_user_name,
         user_email: &state.git_user_email,
+        ssh: ssh_ref,
     };
     let result = repo.add_and_commit(rel_paths, message).await?;
-    Ok(Json(commit_response(result)))
+    let response = build_commit_response(&repo, result).await;
+    Ok(Json(response))
 }
 
-fn commit_response(result: CommitResult) -> CommitResponse {
+/// Construct the JSON response for a mutation, attempting `git push` afterwards
+/// when an ssh remote is configured. Push failure is non-fatal: the local commit
+/// stands and the error is surfaced to the client.
+async fn build_commit_response(repo: &GitRepo<'_>, result: CommitResult) -> CommitResponse {
     match result {
-        CommitResult::Committed { sha } => CommitResponse {
-            committed: true,
-            sha: Some(sha),
-        },
+        CommitResult::Committed { sha } => {
+            let (pushed, push_error) = if repo.ssh.is_some() {
+                match repo.push().await {
+                    Ok(_) => (Some(true), None),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        tracing::warn!("git push failed after commit {sha}: {msg}");
+                        (Some(false), Some(msg))
+                    }
+                }
+            } else {
+                (None, None)
+            };
+            CommitResponse {
+                committed: true,
+                sha: Some(sha),
+                pushed,
+                push_error,
+            }
+        }
         CommitResult::Nothing => CommitResponse {
             committed: false,
             sha: None,
+            pushed: None,
+            push_error: None,
         },
     }
 }
