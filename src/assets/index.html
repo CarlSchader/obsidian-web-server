@@ -3,30 +3,64 @@
   <head>
     <meta charset="utf-8" />
     <title>Obsidian Web Server</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1e1e1e" />
     <link rel="stylesheet" href="/assets/style.css" />
   </head>
   <body>
-    <div id="app">
-      <aside id="sidebar">
+    <div id="app" data-sidebar-open="false">
+      <header id="topbar">
+        <button id="btn-toggle-sidebar" aria-label="Toggle file tree">
+          <span class="hamburger"></span>
+        </button>
+        <span id="current-path" class="current-path">No file</span>
+        <button id="btn-save-top" class="primary" disabled>Save</button>
+      </header>
+
+      <aside id="sidebar" aria-label="Vault file tree">
         <div class="sidebar-header">
           <span class="title">Vault</span>
           <button id="btn-new" title="Create a new file">+ New</button>
           <button id="btn-refresh" title="Refresh tree">&#x21bb;</button>
+          <button
+            id="btn-close-sidebar"
+            class="close-only"
+            aria-label="Close file tree"
+          >
+            &times;
+          </button>
         </div>
         <div id="tree" class="tree"></div>
       </aside>
+
+      <div
+        id="sidebar-scrim"
+        aria-hidden="true"
+        tabindex="-1"
+      ></div>
+
       <main id="editor-pane">
-        <header class="editor-header">
-          <input id="path-display" type="text" readonly placeholder="No file selected" />
-          <input id="commit-message" type="text" placeholder="Commit message (optional)" />
-          <button id="btn-save" disabled>Save (Ctrl+S)</button>
-          <button id="btn-rename" disabled>Rename</button>
-          <button id="btn-delete" disabled>Delete</button>
-        </header>
+        <div class="editor-toolbar">
+          <input
+            id="commit-message"
+            type="text"
+            placeholder="Commit message (optional)"
+          />
+          <div class="toolbar-actions">
+            <button id="btn-save" disabled>Save (Ctrl+S)</button>
+            <button id="btn-rename" disabled>Rename</button>
+            <button id="btn-delete" disabled>Delete</button>
+          </div>
+        </div>
         <textarea
           id="editor"
           spellcheck="false"
+          autocapitalize="off"
+          autocomplete="off"
+          autocorrect="off"
           placeholder="Select a file from the tree to start editing."
           disabled
         ></textarea>

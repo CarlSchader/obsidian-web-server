@@ -8,16 +8,23 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const app = $("app");
 const treeEl = $("tree");
 const editor = $("editor");
-const pathDisplay = $("path-display");
+const currentPathEl = $("current-path");
 const commitMessage = $("commit-message");
 const btnSave = $("btn-save");
+const btnSaveTop = $("btn-save-top");
 const btnRename = $("btn-rename");
 const btnDelete = $("btn-delete");
 const btnNew = $("btn-new");
 const btnRefresh = $("btn-refresh");
+const btnToggleSidebar = $("btn-toggle-sidebar");
+const btnCloseSidebar = $("btn-close-sidebar");
+const sidebarScrim = $("sidebar-scrim");
 const statusEl = $("status");
+
+const fileButtons = [btnSave, btnSaveTop, btnRename, btnDelete];
 
 function setStatus(msg, kind = "") {
   statusEl.textContent = msg;
@@ -25,9 +32,50 @@ function setStatus(msg, kind = "") {
 }
 
 function setBusy(busy) {
-  for (const b of [btnSave, btnRename, btnDelete, btnNew, btnRefresh]) {
+  for (const b of [
+    btnSave,
+    btnSaveTop,
+    btnRename,
+    btnDelete,
+    btnNew,
+    btnRefresh,
+  ]) {
     b.disabled = busy ? true : b.dataset.shouldDisable === "true";
   }
+}
+
+function setFileLoaded(loaded) {
+  const shouldDisable = loaded ? "false" : "true";
+  for (const b of fileButtons) {
+    b.dataset.shouldDisable = shouldDisable;
+    b.disabled = !loaded;
+  }
+  editor.disabled = !loaded;
+}
+
+function setCurrentPath(path) {
+  state.currentPath = path;
+  if (path) {
+    currentPathEl.textContent = path;
+    currentPathEl.classList.add("has-file");
+    currentPathEl.title = path;
+  } else {
+    currentPathEl.textContent = "No file";
+    currentPathEl.classList.remove("has-file");
+    currentPathEl.title = "";
+  }
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function setSidebarOpen(open) {
+  app.dataset.sidebarOpen = open ? "true" : "false";
+}
+
+function toggleSidebar() {
+  setSidebarOpen(app.dataset.sidebarOpen !== "true");
 }
 
 async function api(method, url, body) {
@@ -113,19 +161,13 @@ function renderNode(node) {
 async function openFile(path) {
   try {
     const data = await api("GET", `/api/file?path=${encodeURIComponent(path)}`);
-    state.currentPath = data.path;
+    setCurrentPath(data.path);
     state.originalContent = data.content;
-    pathDisplay.value = data.path;
     editor.value = data.content;
-    editor.disabled = false;
-    btnSave.disabled = false;
-    btnSave.dataset.shouldDisable = "false";
-    btnRename.disabled = false;
-    btnRename.dataset.shouldDisable = "false";
-    btnDelete.disabled = false;
-    btnDelete.dataset.shouldDisable = "false";
+    setFileLoaded(true);
     setStatus(`Opened ${data.path}`);
     renderTree();
+    if (isMobileViewport()) setSidebarOpen(false);
   } catch (e) {
     setStatus(`Failed to open ${path}: ${e.message}`, "error");
   }
@@ -181,7 +223,10 @@ async function createNewFile() {
 
 async function renameCurrent() {
   if (!state.currentPath) return;
-  const to = prompt("Rename to (path relative to vault root):", state.currentPath);
+  const to = prompt(
+    "Rename to (path relative to vault root):",
+    state.currentPath,
+  );
   if (!to || to === state.currentPath) return;
   setBusy(true);
   try {
@@ -194,8 +239,7 @@ async function renameCurrent() {
         : `Renamed (nothing to commit).`,
       "ok",
     );
-    state.currentPath = to;
-    pathDisplay.value = to;
+    setCurrentPath(to);
     commitMessage.value = "";
     await loadTree();
   } catch (e) {
@@ -219,17 +263,10 @@ async function deleteCurrent() {
         : `Delete: nothing to commit.`,
       "ok",
     );
-    state.currentPath = null;
+    setCurrentPath(null);
     state.originalContent = "";
-    pathDisplay.value = "";
     editor.value = "";
-    editor.disabled = true;
-    btnSave.disabled = true;
-    btnSave.dataset.shouldDisable = "true";
-    btnRename.disabled = true;
-    btnRename.dataset.shouldDisable = "true";
-    btnDelete.disabled = true;
-    btnDelete.dataset.shouldDisable = "true";
+    setFileLoaded(false);
     commitMessage.value = "";
     await loadTree();
   } catch (e) {
@@ -240,15 +277,23 @@ async function deleteCurrent() {
 }
 
 btnSave.addEventListener("click", saveCurrent);
+btnSaveTop.addEventListener("click", saveCurrent);
 btnRename.addEventListener("click", renameCurrent);
 btnDelete.addEventListener("click", deleteCurrent);
 btnNew.addEventListener("click", createNewFile);
 btnRefresh.addEventListener("click", loadTree);
 
+btnToggleSidebar.addEventListener("click", toggleSidebar);
+btnCloseSidebar.addEventListener("click", () => setSidebarOpen(false));
+sidebarScrim.addEventListener("click", () => setSidebarOpen(false));
+
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
     e.preventDefault();
     if (!btnSave.disabled) saveCurrent();
+  }
+  if (e.key === "Escape" && app.dataset.sidebarOpen === "true") {
+    setSidebarOpen(false);
   }
 });
 
@@ -259,4 +304,6 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
+setFileLoaded(false);
+setCurrentPath(null);
 loadTree();
