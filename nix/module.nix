@@ -135,6 +135,26 @@ in
         `$XDG_CACHE_HOME` for SSH-mode clones.
       '';
     };
+
+    user = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        If set, run the service as this user instead of using
+        {option}`DynamicUser`. Required when {option}`vault` is a local path
+        and the vault is owned by a specific account; the dynamic uid can't
+        write to a directory owned by someone else.
+      '';
+    };
+
+    group = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Group to run the service as. Only meaningful together with
+        {option}`user`.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -210,13 +230,23 @@ in
           ]
           ++ identityArgs
           ++ cfg.extraArgs;
+          useDynamicUser = cfg.user == null;
         in
         {
           ExecStart = "${cfg.package}/bin/obsidian-web-server ${lib.escapeShellArgs argv}";
 
-          DynamicUser = true;
+          DynamicUser = useDynamicUser;
           StateDirectory = cfg.stateDirectory;
           CacheDirectory = cfg.stateDirectory;
+        }
+        // lib.optionalAttrs (cfg.user != null) { User = cfg.user; }
+        // lib.optionalAttrs (cfg.group != null) { Group = cfg.group; }
+        // lib.optionalAttrs (!vaultIsSsh) {
+          # Local-path vault must be writable by the service. ProtectSystem=strict
+          # otherwise hides everything outside StateDirectory/CacheDirectory.
+          ReadWritePaths = [ cfg.vault ];
+        }
+        // {
 
           # Deliver the SSH key as a credential so it lands at %d/identity
           # (mode 0400) inside the sandbox without needing to be readable by

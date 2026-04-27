@@ -98,6 +98,13 @@
           obsidian-web-server-fmt = craneLib.cargoFmt {
             inherit src;
           };
+        }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          # NixOS VM test: confirms the module works against a symlinked
+          # vault root (the same shape systemd's CacheDirectory creates
+          # under DynamicUser). Linux-only because it depends on
+          # testers.runNixOSTest.
+          module-vm-test = import ./nix/test.nix { inherit pkgs self; };
         };
 
         formatter = pkgs.nixfmt-rfc-style;

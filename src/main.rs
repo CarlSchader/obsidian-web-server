@@ -91,21 +91,21 @@ async fn main() -> Result<()> {
 
     let source = classify_vault_arg(&args.vault, args.identity_file.clone())?;
 
-    let (vault_path, ssh) = match source {
+    let (raw_vault_path, ssh) = match source {
         VaultSource::LocalPath(p) => {
-            let canon = p
-                .canonicalize()
-                .with_context(|| format!("vault path does not exist: {}", p.display()))?;
-            if !canon.is_dir() {
-                bail!("vault path is not a directory: {}", canon.display());
+            if !p.exists() {
+                bail!("vault path does not exist: {}", p.display());
             }
-            if !canon.join(".git").exists() {
+            if !p.is_dir() {
+                bail!("vault path is not a directory: {}", p.display());
+            }
+            if !p.join(".git").exists() {
                 bail!(
                     "vault path is not a git repository (missing .git): {}",
-                    canon.display()
+                    p.display()
                 );
             }
-            (canon, None)
+            (p, None)
         }
         VaultSource::Ssh { url, identity } => {
             validate_identity_file(&identity)?;
@@ -118,6 +118,17 @@ async fn main() -> Result<()> {
             (dir, Some(Arc::new(ssh)))
         }
     };
+
+    // Canonicalize the vault root so it matches what `Path::canonicalize`
+    // returns from inside `Vault::resolve`. This matters whenever the path
+    // reaches the binary through a symlink — e.g. under systemd `DynamicUser`
+    // + `CacheDirectory`, where `/var/cache/<name>` is a symlink to
+    // `/var/cache/private/<name>`. Without this the non-canonical root is
+    // never a prefix of the resolved path and every API request fails with
+    // "path is outside the vault".
+    let vault_path = raw_vault_path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize vault path {}", raw_vault_path.display()))?;
 
     let vault = Arc::new(vault::Vault::new(vault_path));
     let state = AppState {

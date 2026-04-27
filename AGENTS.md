@@ -52,14 +52,24 @@ when it is a local path. The key must be unencrypted; ssh runs with
   the binary at build time via `rust-embed` (`#[folder = "src/assets"]`).
   No bundler, no framework. Edit and rebuild.
 - `nix/module.nix` — `nixosModules.default`. Wraps the binary in a hardened
-  systemd unit with `DynamicUser`, `StateDirectory` mounted as `$HOME` (so
-  `~/.ssh/known_hosts` survives restarts) and `CacheDirectory` mounted as
-  `$XDG_CACHE_HOME` (for SSH-mode clones). The SSH key is delivered via
-  `LoadCredential` so it doesn't need to be readable by the dynamic uid and
-  isn't copied into the world-readable Nix store. `pkgs.git` and
-  `pkgs.openssh` are required on the unit's `PATH` because `git.rs` shells
-  out to both. The SSH-URL classifier in the module mirrors
-  `classify_vault_arg` in `src/main.rs`; keep them in sync.
+  systemd unit with `DynamicUser` (the default), `StateDirectory` mounted as
+  `$HOME` (so `~/.ssh/known_hosts` survives restarts) and `CacheDirectory`
+  mounted as `$XDG_CACHE_HOME` (for SSH-mode clones). The SSH key is
+  delivered via `LoadCredential` so it doesn't need to be readable by the
+  dynamic uid and isn't copied into the world-readable Nix store. `pkgs.git`
+  and `pkgs.openssh` are required on the unit's `PATH` because `git.rs`
+  shells out to both. The SSH-URL classifier in the module mirrors
+  `classify_vault_arg` in `src/main.rs`; keep them in sync. Setting
+  `services.obsidian-web-server.user`/`.group` switches off `DynamicUser`
+  for local-path vaults that need a static owner.
+- `nix/test.nix` — `pkgs.testers.runNixOSTest` exposed as
+  `checks.<linux>.module-vm-test`. Boots a VM, places a seeded git repo at
+  `/var/lib/notes-real`, exposes it through a symlink at `/var/lib/notes`,
+  and asserts the API can read/write through the symlinked root. This is a
+  regression test for the canonicalize-the-vault-root invariant in
+  `main.rs` — without it, `Vault::resolve` canonicalizes request paths
+  through the symlink and the `starts_with` check rejects every file as
+  "outside the vault". `nix flake check` runs it on Linux only.
 
 UI is **mobile-first**: drawer sidebar with hamburger toggle below 768 px,
 two-column layout above. Topbar (`#topbar`) is hidden on desktop via media
