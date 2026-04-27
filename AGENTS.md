@@ -51,6 +51,15 @@ when it is a local path. The key must be unencrypted; ssh runs with
 - `src/assets/{index.html,app.js,style.css}` — vanilla JS UI, embedded into
   the binary at build time via `rust-embed` (`#[folder = "src/assets"]`).
   No bundler, no framework. Edit and rebuild.
+- `nix/module.nix` — `nixosModules.default`. Wraps the binary in a hardened
+  systemd unit with `DynamicUser`, `StateDirectory` mounted as `$HOME` (so
+  `~/.ssh/known_hosts` survives restarts) and `CacheDirectory` mounted as
+  `$XDG_CACHE_HOME` (for SSH-mode clones). The SSH key is delivered via
+  `LoadCredential` so it doesn't need to be readable by the dynamic uid and
+  isn't copied into the world-readable Nix store. `pkgs.git` and
+  `pkgs.openssh` are required on the unit's `PATH` because `git.rs` shells
+  out to both. The SSH-URL classifier in the module mirrors
+  `classify_vault_arg` in `src/main.rs`; keep them in sync.
 
 UI is **mobile-first**: drawer sidebar with hamburger toggle below 768 px,
 two-column layout above. Topbar (`#topbar`) is hidden on desktop via media
@@ -138,7 +147,6 @@ Once the host is healthy, the workaround is safe to remove.
 
 ## Out of scope (don't add without asking)
 
-- NixOS module / `nixosModules.default` — explicitly deferred.
 - Auth (basic, bearer, etc.) — explicitly deferred.
 - HTTPS git URLs — explicitly deferred (SSH only).
 - Passphrase-protected keys / ssh-agent integration — explicitly deferred.

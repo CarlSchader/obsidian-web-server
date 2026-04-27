@@ -19,7 +19,7 @@
       rust-overlay,
       crane,
     }:
-    flake-utils.lib.eachDefaultSystem (
+    (flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs {
@@ -102,5 +102,11 @@
 
         formatter = pkgs.nixfmt-rfc-style;
       }
-    );
+    ))
+    // {
+      # NixOS module exposing this server as a hardened systemd unit.
+      # See nix/module.nix for available options.
+      nixosModules.default = import ./nix/module.nix { inherit self; };
+      nixosModules.obsidian-web-server = self.nixosModules.default;
+    };
 }
